@@ -3,30 +3,30 @@
 {-# LANGUAGE OverloadedStrings #-}
 module RayWut where
 
-import           Prelude             (Bool, Double, Eq, Int, Num, Show (..), fst,
-                                      ceiling, cos, floor, fromIntegral, negate,
-                                      otherwise, pi, sin, tan, undefined, (&&),
-                                      (*), (+), (-), (/), (<=), (>=))
+import Prelude             (Bool, Double, Eq, Int, Num, Show (..), fst,
+                            ceiling, cos, floor, fromIntegral, negate,
+                            otherwise, pi, sin, tan, undefined, (&&),
+                            (*), (+), (-), (/), (<=), (>=))
 
-import           Control.Applicative (Applicative)
-import           Control.Category    ((.))
-import           Control.Lens        (Index, IxValue, Ixed, ix, to, (%~), (.~), (-~), (+~),
-                                      (^.), _Wrapped)
-import           Data.Function       (($), (&))
-import           Data.Functor        (fmap, (<$>))
-import           Data.Semigroup      ((<>))
-import           GHC.Word            (Word8)
+import Control.Applicative (Applicative)
+import Control.Category    ((.))
+import Control.Lens        (Index, IxValue, Ixed, ix, to, (%~), (.~), (-~), (+~),
+                            (^.), _Wrapped)
+import Data.Function       (($), (&))
+import Data.Functor        (fmap, (<$>))
+import Data.Semigroup      ((<>))
+import GHC.Word            (Word8)
 
-import           Data.List           (replicate)
-import           Data.String         (unlines, unwords)
+import Data.List           (replicate)
+import Data.String         (unlines, unwords)
 
-import           Linear.Matrix       (M22, M33, M44, identity)
-import           Linear.V2           (V2 (V2))
-import           Linear.V3           (V3 (V3), _x, _y)
-import           Linear.V4           (V4 (V4), _w)
+import Linear.Matrix       (M22, M33, M44, identity)
+import Linear.V2           (V2 (V2))
+import Linear.V3           (V3 (V3), _x, _y)
+import Linear.V4           (V4 (V4), _w)
 
-import           RayCaster
-import           Types
+import RayCaster
+import Types
 
 -- $setup
 -- >>> import Linear.V2 (V2 (V2))
@@ -35,7 +35,7 @@ import           Types
 -- >>> let rCast = RayCast (Distance 330) (Sqr Wall 64)
 
 rotationMatrix
-  :: P
+  :: Player
   -> M22 Double
 rotationMatrix p =
   let
@@ -80,10 +80,10 @@ calcFovDistance (Width w) (Angle a) =
     Distance . fromIntegral . floor $ (w' / 2) / tan (toRadians $ Angle (a / 2))
 
 movePlayer
-  :: P
+  :: Player
   -> Move
   -> Double
-  -> P
+  -> Player
 movePlayer p move speed =
   let
     pRads = p ^. playerFacing . to toRadians

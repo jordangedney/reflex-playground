@@ -22,9 +22,9 @@ import           Types
 
 -- $setup
 -- >>> let sqrSize = (64 :: Int)
--- >>> let player = P (V2 96 224) (Angle 60.0)
--- >>> let player2 = P (V2 224 224) (Angle 60.0)
--- >>> let player3 = P (V2 224 224) (Angle 237.0)
+-- >>> let player = Player (V2 96 224) (Angle 60.0)
+-- >>> let player2 = Player (V2 224 224) (Angle 60.0)
+-- >>> let player3 = Player (V2 224 224) (Angle 237.0)
 -- >>> let ray3 = Ray 207.0
 
 -- | Create the Ray to be cast
@@ -47,7 +47,7 @@ getFirstIntersection
   :: (Int -> b)
   -> Lens' (V2 Double) Double
   -> (Double -> Double -> Double)
-  -> P
+  -> Player
   -> Int
   -> b
 getFirstIntersection cs l fn p s = cs . floor $ fn
@@ -68,7 +68,7 @@ rayFunction d pxy gsize
 -- HorizAY 256
 horizontalFirstY
   :: Ray
-  -> P
+  -> Player
   -> Int
   -> HorizAY
 horizontalFirstY f =
@@ -80,7 +80,7 @@ horizontalFirstY f =
 -- >>> horizontalFirstX player3 (HorizAY 256) ray3
 -- HorizAX 161
 horizontalFirstX
-  :: P
+  :: Player
   -> HorizAY
   -> Ray
   -> HorizAX
@@ -110,14 +110,14 @@ horizontalFirstX p (HorizAY ay) (Ray alpha) =
 -- VertAX 191
 verticalFirstX
   :: Ray
-  -> P
+  -> Player
   -> Int
   -> VertAX
 verticalFirstX f =
   getFirstIntersection VertAX _x (rayFunction . snd $ rayDir f)
 
 -- |
--- A.y = Py + (Px-A.x)*tan(ALPHA);
+-- A.y = Player y + (Px-A.x)*tan(ALPHA);
 --
 -- >>> verticalFirstY player (VertAX 128) (Ray 60.0)
 -- VertAY 168
@@ -130,7 +130,7 @@ verticalFirstX f =
 -- >>> verticalFirstY player3 (VertAX 191) ray3
 -- VertAY 240
 verticalFirstY
-  :: P
+  :: Player
   -> VertAX
   -> Ray
   -> VertAY
@@ -280,7 +280,7 @@ toRoomCoord' s xy =
 -- Distance 184.93782739072068
 --
 distanceTo
-  :: P
+  :: Player
   -> Maybe (V2 Double, Sqr)
   -> Distance
 distanceTo _ Nothing       = Distance 99999
@@ -292,7 +292,7 @@ distanceTo p (Just (d, _)) = Distance $ LM.distance (p^.playerPosition) d
 --
 firstHorizontalIntersection
   :: Ray
-  -> P
+  -> Player
   -> Int
   -> (HorizAX, HorizAY)
 firstHorizontalIntersection ray p s =
@@ -308,7 +308,7 @@ firstHorizontalIntersection ray p s =
 --
 firstVerticalIntersection
   :: Ray
-  -> P
+  -> Player
   -> Int
   -> (VertAX, VertAY)
 firstVerticalIntersection ray p s =
@@ -331,7 +331,7 @@ toTheWall step rm s currentV2 =
     Nothing                        -> Nothing
 
 finaliseRay
-  :: P
+  :: Player
   -> RayBeta
   -> Int
   -> Maybe (V2 Double, Sqr)
@@ -348,7 +348,7 @@ castSingleRay
   -> Int
   -> Ray
   -> RayBeta
-  -> P
+  -> Player
   -> RayCast
 castSingleRay rm s ray rayBeta p =
   let

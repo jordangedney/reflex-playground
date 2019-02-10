@@ -80,7 +80,7 @@ instance Show Room where
 atPos :: V2 Int -> Room -> Maybe Sqr
 atPos (V2 x y) r = r ^? to unRoom . ix y . ix x
 
-data P = P
+data Player = Player
   { _playerPosition :: V2 Double
   , _playerFacing   :: Angle
   }
@@ -140,7 +140,7 @@ makeWrapped ''Height
 makeWrapped ''Width
 makeWrapped ''Angle
 
-makeLenses ''P
+makeLenses ''Player
 makeLenses ''Sqr
 makeLenses ''FOV
 makeLenses ''RayCast
@@ -161,8 +161,8 @@ room1 =
          , [w,w,w,w,w,w,w,w]
          ]
 
-player2start :: P
-player2start = P (V2 96 224) (Angle 30)
+player2start :: Player
+player2start = Player (V2 96 224) (Angle 30)
 
 room2 :: Room
 room2 =

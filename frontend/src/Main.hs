@@ -60,6 +60,9 @@ sqrSize = 64
 fovAngle :: Double
 fovAngle = 60
 
+playerSpeed :: Double
+playerSpeed = 10
+
 angleBetweenRays :: Double
 angleBetweenRays = fovAngle / screenWidth
 
@@ -77,8 +80,8 @@ betaRays =
   in
     [ RayBeta rb | rb <- [halfFOV', step .. (negate halfFOV')] ]
 
-player :: T.P
-player = T.P (V2 p (p - s)) (Angle fovAngle)
+player :: T.Player
+player = T.Player (V2 p (p - s)) (Angle fovAngle)
   where
     s = fromIntegral sqrSize
     p = s * 3 + 32
@@ -89,8 +92,8 @@ fov = R.mkFov
   (Width (floor screenWidth))
   (Angle fovAngle)
 
-canvasAttrs :: Map Text Text
-canvasAttrs = Map.fromList
+mapCanvasAttrs :: Map Text Text
+mapCanvasAttrs = Map.fromList
   [ ("width", "512")
   , ("height", "512")
   ]
@@ -134,7 +137,7 @@ stepSquares
 stepSquares rm sqrS fn ray v@(V2 x y) =
   (\s -> ((v,s), fn v sqrS ray)) <$> T.atPos (R.toRoomCoord sqrS x y) rm
 
-mkHorizInters, mkVertInters :: Ray -> T.P -> [(V2 Int, T.Sqr)]
+mkHorizInters, mkVertInters :: Ray -> T.Player -> [(V2 Int, T.Sqr)]
 mkHorizInters r p =
   let (T.HorizAX hx, T.HorizAY hy) = R.firstHorizontalIntersection r p sqrSize
   in L.unfoldr (stepSquares T.room1 sqrSize R.stepHorizontalIntersection r) (V2 hx hy)
@@ -149,7 +152,7 @@ drawInters
 drawInters cx (V2 x y) =
   C.fillRect cx (fromIntegral x) (fromIntegral y) 10 10
 
-renderMap  :: T.P -> Ray -> Ray -> CanvasRenderingContext2D -> t -> JSM ()
+renderMap  :: T.Player -> Ray -> Ray -> CanvasRenderingContext2D -> t -> JSM ()
 renderMap p firstRay lastRay cx _ = do
   renderRoom T.room1 cx
   renderPlayer p cx
@@ -175,7 +178,7 @@ app = do
     CD.dContext2d (CD.CanvasConfig innerEle mempty)
     |> (fmap . fmap) CD._canvasInfo_context
 
-  (e, _) <- RD.elAttr' "canvas" canvasAttrs RD.blank
+  (e, _) <- RD.elAttr' "canvas" mapCanvasAttrs RD.blank
   eDraw <- RD.button "Go"
 
   dCx <- fmap CD._canvasInfo_context
@@ -298,8 +301,8 @@ renderSqr pos sq cx = do
       Wall -> "darkgrey"
       Floor -> "aqua"
 
-renderPlayer :: T.P -> CanvasRenderingContext2D -> JSM ()
-renderPlayer (T.P pos face) cx = do
+renderPlayer :: T.Player -> CanvasRenderingContext2D -> JSM ()
+renderPlayer (T.Player pos face) cx = do
   C.save cx
 
   C.translate cx (pos ^. _x . to realToFrac) (pos ^. _y . to realToFrac)
@@ -359,42 +362,120 @@ canvasInfoToRenderContext
      f1 (f (CD.CanvasInfo c t)) -> f1 (f (CD.RenderContext c))
 canvasInfoToRenderContext = (fmap . fmap) CD._canvasInfo_context
 
-app' :: MonadWidget t m => m ()
-app' = do
+rayCast p rIth rayAngle =
+  let
+    rA = p ^. T.playerFacing . to (R.createRay halfFOV rayAngle)
+
+    -- where RayBeta is the angle of the ray that is being cast relative to
+    -- the viewing angle. I can get away with this because we generate the
+    -- list of betaRays beforehand and we have a known quantity based on the `rayList`
+    rB = betaRays !! rIth
+  in
+    (castSingleRay T.room1 sqrSize rA rB p, rIth)
+
+
+createRayTracingCanvases
+  :: MonadWidget t m =>
+   m (RD.Element RD.EventResult (RD.DomBuilderSpace m) t,
+       RD.Dynamic t CanvasRenderingContext2D,
+       RD.Dynamic t CanvasRenderingContext2D)
+createRayTracingCanvases = do
   (wrapperEle, (innerEle, _)) <- blankCanvas cameraAttrs |> tableDiv
-  (e, _) <- blankCanvas canvasAttrs
+  (e, _) <- blankCanvas mapCanvasAttrs
 
   let
     emptyConfig element = CD.CanvasConfig element mempty
-
     cameraCanvasConfig = emptyConfig innerEle
     innerCanvasInfo = CD.dContext2d cameraCanvasConfig
-
-    mainCanvasConfig = emptyConfig e
-    mainCanvasInfo = CD.dContext2d mainCanvasConfig
+    mapCanvasConfig = emptyConfig e
+    mainCanvasInfo = CD.dContext2d mapCanvasConfig
 
   dCamCx <- innerCanvasInfo |> canvasInfoToRenderContext
   dCx <- mainCanvasInfo |> canvasInfoToRenderContext
+  return (wrapperEle, dCamCx, dCx)
+
+buildRays ply = rayCast ply `imap` rayList
+
+rays cx rs = do
+  C.beginPath cx
+  traverse_ (\(rc,i) -> renderRayCast cx fov sqrSize i rc) rs
+  C.closePath cx
+  C.stroke cx
+
+camRender
+  :: [(RayCast, Int)]
+  -> CanvasRenderingContext2D
+  -> Double
+  -> JSM ()
+camRender r cx _ = do
+  C.clearRect cx 0 0 (realToFrac screenWidth) (realToFrac screenHeight)
+  C.save cx
+  C.setFillStyle cx ("lightblue" :: JSString)
+  C.fillRect cx 0 0 (realToFrac screenWidth) (realToFrac screenHeight)
+  C.setFillStyle cx ("darkgrey" :: JSString)
+  C.translate cx (realToFrac $ screenWidth / 2) (realToFrac $ screenHeight / 2)
+  rays cx r
+  C.restore cx
+
+-- Rotation based on Ray Casting 0 at E, 90 at N, 180 at W, 270 at S
+rotRight a = T.playerFacing %~ (`T.subtractAngle` a)
+rotLeft a = T.playerFacing %~ T.addAngle a
+
+moveForward p =
+  R.movePlayer p T.Forward playerSpeed
+
+moveBackward p =
+  R.movePlayer p T.Backward playerSpeed
+
+firstAndLastRay player = (firstRay, lastRay)
+  where firstRay = (^. T.playerFacing . to (Ray . T._unAngle . (`T.subtractAngle` halfFOV)) ) <$> player
+        lastRay = (^. T.playerFacing . to (Ray . T._unAngle . T.addAngle halfFOV) ) <$> player
+
+app' :: MonadWidget t m => m ()
+app' = do
+  (topLevelWrapper, dCamCx, dCx) <- createRayTracingCanvases
 
   eDraw <- RD.button "Go"
   eLeftBtn <- RD.button "Turn left a bit"
   eRightBtn <- RD.button "Turn right a bit"
-
-  let eMoved = eDraw
+  eForwardBtn <- RD.button "Go forward"
+  eBackwardBtn <- RD.button "Go backward"
 
   let
-    renderShitty cx _ = do
-    -- renderRoom T.room1 cx
-    -- renderPlayer p cx
-        C.setFillStyle cx ("blue" :: JSString)
-        C.setFillStyle cx ("green" :: JSString)
-        C.setFillStyle cx ("blue" :: JSString)
-        C.setFillStyle cx ("green" :: JSString)
+    eLeft = RD.keypress RD.ArrowLeft topLevelWrapper <> eLeftBtn
+    eRight = RD.keypress RD.ArrowRight topLevelWrapper <> eRightBtn
+    eForward = RD.keypress RD.ArrowUp topLevelWrapper <> eForwardBtn
+    eBackward = RD.keypress RD.ArrowDown topLevelWrapper <> eBackwardBtn
 
-  -- eRendered <- CD.drawWithCx dCx renderShitty eMoved
-  --eRendered <- CD.drawWithCx dCx (renderShitty <$> dPlayer <*> dFirstRay <*> dLastRay) eMoved
+  dPlayer <- R.foldDyn ($) player $ R.mergeWith (.)
+    [ rotLeft (Angle 2) <$ eLeft
+    , rotRight (Angle 2) <$ eRight
+    , moveForward <$ eForward
+    , moveBackward <$ eBackward
+    ]
 
-  pure ()
+  let
+    dFirstRay = (^. T.playerFacing . to (Ray . T._unAngle . (`T.subtractAngle` halfFOV)) ) <$> dPlayer
+    dLastRay = (^. T.playerFacing . to (Ray . T._unAngle . T.addAngle halfFOV) ) <$> dPlayer
+
+  dRays <- R.holdDyn (buildRays player) $
+    buildRays <$> R.updated dPlayer
+
+  let
+    eMoved = eDraw <> (() <$ R.updated dPlayer)
+    renderer = (renderMap <$> dPlayer <*> dFirstRay <*> dLastRay)
+
+  eRendered <- CD.drawWithCx dCx renderer eMoved
+  eRendered' <- CD.drawWithCx dCamCx (camRender <$> dRays) eMoved
+
+  dRendered <- R.holdDyn "Not Rendered" $
+    "Rendered!" <$ eRendered
+
+  RD.divClass "DEBUG" $
+    RD.display dRendered
+
+  RD.divClass "DEBUG" $
+    RD.display dPlayer
 
 main :: IO ()
-main = run 3911 $ mainWidgetWithCss css app
+main = run 3911 $ mainWidgetWithCss css app'
