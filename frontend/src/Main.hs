@@ -5,79 +5,48 @@
 module Main (main) where
 
 import Control.Applicative ((<|>))
-
-import           Control.Lens                     (to, (+~), (.~), (^.), (%~), imap,
-                                                   _Wrapped)
-import           Control.Monad                    (void)
-
-import qualified Data.List as L
-
-import           Data.Foldable                    (foldlM, traverse_)
-import           Data.Function                    ((&))
-import           Data.Functor                     (($>), (<$))
-import           Data.Maybe                       (catMaybes,mapMaybe)
-
+import Control.Lens (to, (+~), (.~), (^.), (%~), imap, _Wrapped)
+import Control.Monad (void)
+import Control.Monad.State (MonadState, get, put)
+import Data.Foldable (foldlM, traverse_)
+import Data.Function ((&))
+import Data.Functor (($>), (<$))
+import Data.Maybe (catMaybes,mapMaybe)
+import Data.Semigroup ((<>))
+import Data.Text (Text, pack)
+import Data.Map (Map)
 import Linear.Matrix (identity, M44, (!*))
 import Linear.V4 (_w)
-import           Linear.V2                        (V2 (..), _x, _y)
+import Linear.V2 (V2 (..), _x, _y)
 
-import           Language.Javascript.JSaddle.Warp (run)
+import Language.Javascript.JSaddle.Warp (run)
+import Reflex.Dom (MonadWidget, (=:))
+import Reflex.Dom.Core (mainWidget, mainWidgetWithCss)
+import JSDOM.CanvasRenderingContext2D (CanvasRenderingContext2D)
+import JSDOM.Types (JSM, JSString, liftJSM)
 
-import qualified Reflex                           as R
-import           Reflex.Dom                       (MonadWidget, (=:))
-import qualified Reflex.Dom                       as RD
-import           Reflex.Dom.Core                  (mainWidget)
+import DrawM (DrawM, runDrawM)
+import Style (css)
+import RayCaster (castSingleRay)
+import Types (Angle (..), FOV (..), Height (..), Ray (Ray), RayBeta (RayBeta), RayCast,
+              Room (..), SqType (..), Sqr (..), Width (..))
 
-import Data.Semigroup ((<>))
-import Data.Text (Text)
-import Data.Map                         (Map)
-import qualified Data.Map                         as Map
-
-import           JSDOM.CanvasRenderingContext2D   (CanvasRenderingContext2D)
-import qualified JSDOM.CanvasRenderingContext2D   as C
+import qualified Data.List as L
+import qualified Reflex as R
+import qualified Reflex.Dom as RD
+import qualified Data.Map as Map
+import qualified JSDOM.CanvasRenderingContext2D as C
 import qualified JSDOM.CanvasPath as C
-
-import           JSDOM.Types                      (JSM, JSString, liftJSM)
-
--- Dude, seriously?! Fix this up, what even are these modules?
-import qualified Reflex.Dom.CanvasBuilder.Types   as CD
-import qualified Reflex.Dom.CanvasDyn             as CD
-
-import           Control.Monad.State              (MonadState, get,put)
-
-import           DrawM                            (DrawM, runDrawM)
-
+import qualified Reflex.Dom.CanvasBuilder.Types as CD
+import qualified Reflex.Dom.CanvasDyn as CD
 import qualified RayCaster as R
-import           RayCaster                        (castSingleRay)
 import qualified RayWut as R
+import qualified Types as T
 
-import           Types                            (Angle (..), FOV (..),
-                                                   Height (..), Ray (Ray),
-                                                   RayBeta (RayBeta), RayCast,
-                                                   Room (..), SqType (..),
-                                                   Sqr (..), Width (..))
+infixl 0 |>
+(|>) :: a -> (a -> c) -> c
+(|>) = flip ($)
 
-import qualified Types                            as T
-
-renderRayCast
-  :: CanvasRenderingContext2D
-  -> FOV
-  -> Int
-  -> Int
-  -> RayCast
-  -> JSM ()
-renderRayCast cx fov s rIth rc = do
-  let
-    w = fov ^. T.fovWidth . _Wrapped . to fromIntegral
-    h = fov ^. T.fovHeight . _Wrapped . to fromIntegral
-
-    sliceHeight = R.projectedSliceHeight s rc fov
-
-    x = (negate w/2) + (fromIntegral rIth)
-    y = negate (sliceHeight/2)
-
-  C.moveTo cx (realToFrac x) (realToFrac y)
-  C.lineTo cx (realToFrac x) (realToFrac $ y + sliceHeight)
 
 screenWidth :: Double
 screenWidth = 320
@@ -128,10 +97,32 @@ canvasAttrs = Map.fromList
 
 cameraAttrs :: Map Text Text
 cameraAttrs = Map.fromList
-  [ ("width", "320")
-  , ("height", "240")
+  [ ("width", pack . show $ screenWidth)
+  , ("height", pack . show $ screenHeight)
   -- , ("style", "transform-origin: 0 0;transform: scale(1.5, 1.5);")
   ]
+
+calculateRayCast fov slice rIth rc = (x, y, sliceHeight)
+  where width = fov ^. T.fovWidth . _Wrapped . to fromIntegral
+        height = fov ^. T.fovHeight . _Wrapped . to fromIntegral
+        sliceHeight = R.projectedSliceHeight slice rc fov
+        x = (negate width/2) + (fromIntegral rIth)
+        y = negate (sliceHeight/2)
+
+renderRayCast' cx x y sliceHeight = do
+  C.moveTo cx (realToFrac x) (realToFrac y)
+  C.lineTo cx (realToFrac x) (realToFrac $ y + sliceHeight)
+
+renderRayCast
+  :: CanvasRenderingContext2D
+  -> FOV
+  -> Int
+  -> Int
+  -> RayCast
+  -> JSM ()
+renderRayCast cx fov slice rIth rc = do
+  let (x, y, sliceHeight) = calculateRayCast fov slice rIth rc
+  renderRayCast' cx x y sliceHeight
 
 stepSquares
   :: Room
@@ -158,6 +149,7 @@ drawInters
 drawInters cx (V2 x y) =
   C.fillRect cx (fromIntegral x) (fromIntegral y) 10 10
 
+renderMap  :: T.P -> Ray -> Ray -> CanvasRenderingContext2D -> t -> JSM ()
 renderMap p firstRay lastRay cx _ = do
   renderRoom T.room1 cx
   renderPlayer p cx
@@ -175,11 +167,13 @@ renderMap p firstRay lastRay cx _ = do
 app :: MonadWidget t m => m ()
 app = do
   let
-  (wrapperEle, (innerEle, _)) <- RD.elAttr' "div" ("tabindex" =: "0") $
+  (wrapperEle, (innerEle, _)) <-
     RD.elAttr' "canvas" cameraAttrs RD.blank
+    |> RD.elAttr' "div" ("tabindex" =: "0")
 
-  dCamCx <- (fmap . fmap) CD._canvasInfo_context $
+  dCamCx <-
     CD.dContext2d (CD.CanvasConfig innerEle mempty)
+    |> (fmap . fmap) CD._canvasInfo_context
 
   (e, _) <- RD.elAttr' "canvas" canvasAttrs RD.blank
   eDraw <- RD.button "Go"
@@ -224,6 +218,7 @@ app = do
 
   eLeftBtn <- RD.button "Turn left a bit"
   eRightBtn <- RD.button "Turn right a bit"
+  eForwardBtn <- RD.button "Turn forward a bit"
 
   let
     -- Rotation based on Ray Casting 0 at E, 90 at N, 180 at W, 270 at S
@@ -232,6 +227,7 @@ app = do
 
     eLeft = RD.keypress RD.ArrowLeft wrapperEle <> eLeftBtn
     eRight = RD.keypress RD.ArrowRight wrapperEle <> eRightBtn
+    eForward = RD.keypress RD.ArrowUp wrapperEle <> eForwardBtn
 
     playerSpeed = 10
 
@@ -241,7 +237,7 @@ app = do
     moveBackward p =
       R.movePlayer p T.Backward playerSpeed
 
-    eForward = RD.keypress RD.ArrowUp wrapperEle
+    -- eForward = RD.keypress RD.ArrowUp wrapperEle <> eForward
     eBackward = RD.keypress RD.ArrowDown wrapperEle
 
   dPlayer <- R.foldDyn ($) player $ R.mergeWith (.)
@@ -265,9 +261,13 @@ app = do
     buildRays <$> R.updated dPlayer
 
   let
-    eMoved = eDraw <> (() <$ R.updated dPlayer)
+    varrr = R.updated dPlayer
+    eMoved = eDraw <> (() <$ varrr)
 
-  eRendered <- CD.drawWithCx dCx (renderMap <$> dPlayer <*> dFirstRay <*> dLastRay) eMoved
+  let
+    renderer = (renderMap <$> dPlayer <*> dFirstRay <*> dLastRay)
+
+  eRendered <- CD.drawWithCx dCx renderer eMoved
   eRendered' <- CD.drawWithCx dCamCx (camRender <$> dRays) eMoved
 
   dRendered <- R.holdDyn "Not Rendered" $
@@ -341,5 +341,60 @@ renderRoom (Room rm) cx =
           ) o' sqs
       ) o rm
 
+
+--------------------------------------------------------------------------------------------
+
+blankCanvas
+  :: MonadWidget t m => Map Text Text
+                     -> m (RD.Element RD.EventResult (RD.DomBuilderSpace m) t, ())
+blankCanvas attributes = RD.elAttr' "canvas" attributes RD.blank
+
+tableDiv
+  :: MonadWidget t m => m a
+                     -> m (RD.Element RD.EventResult (RD.DomBuilderSpace m) t, a)
+tableDiv = RD.elAttr' "div" ("tabindex" =: "0")
+
+canvasInfoToRenderContext
+  :: (Functor f1, Functor f) =>
+     f1 (f (CD.CanvasInfo c t)) -> f1 (f (CD.RenderContext c))
+canvasInfoToRenderContext = (fmap . fmap) CD._canvasInfo_context
+
+app' :: MonadWidget t m => m ()
+app' = do
+  (wrapperEle, (innerEle, _)) <- blankCanvas cameraAttrs |> tableDiv
+  (e, _) <- blankCanvas canvasAttrs
+
+  let
+    emptyConfig element = CD.CanvasConfig element mempty
+
+    cameraCanvasConfig = emptyConfig innerEle
+    innerCanvasInfo = CD.dContext2d cameraCanvasConfig
+
+    mainCanvasConfig = emptyConfig e
+    mainCanvasInfo = CD.dContext2d mainCanvasConfig
+
+  dCamCx <- innerCanvasInfo |> canvasInfoToRenderContext
+  dCx <- mainCanvasInfo |> canvasInfoToRenderContext
+
+  eDraw <- RD.button "Go"
+  eLeftBtn <- RD.button "Turn left a bit"
+  eRightBtn <- RD.button "Turn right a bit"
+
+  let eMoved = eDraw
+
+  let
+    renderShitty cx _ = do
+    -- renderRoom T.room1 cx
+    -- renderPlayer p cx
+        C.setFillStyle cx ("blue" :: JSString)
+        C.setFillStyle cx ("green" :: JSString)
+        C.setFillStyle cx ("blue" :: JSString)
+        C.setFillStyle cx ("green" :: JSString)
+
+  -- eRendered <- CD.drawWithCx dCx renderShitty eMoved
+  --eRendered <- CD.drawWithCx dCx (renderShitty <$> dPlayer <*> dFirstRay <*> dLastRay) eMoved
+
+  pure ()
+
 main :: IO ()
-main = run 3911 $ mainWidget app
+main = run 3911 $ mainWidgetWithCss css app
