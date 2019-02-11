@@ -25,6 +25,11 @@ import Reflex.Dom.Core (mainWidget, mainWidgetWithCss)
 import JSDOM.CanvasRenderingContext2D (CanvasRenderingContext2D)
 import JSDOM.Types (JSM, JSString, liftJSM)
 
+import GHCJS.DOM.Document (getBody)
+import GHCJS.DOM.EventM (on, preventDefault)
+import GHCJS.DOM.GlobalEventHandlers (keyDown)
+import Web.KeyCode
+
 import DrawM (DrawM, runDrawM)
 import Style (css)
 import RayCaster (castSingleRay)
@@ -167,121 +172,6 @@ renderMap p firstRay lastRay cx _ = do
   C.setFillStyle cx ("green" :: JSString)
   traverse_ (drawInters cx . fst) (mkVertInters lastRay p)
 
-app :: MonadWidget t m => m ()
-app = do
-  let
-  (wrapperEle, (innerEle, _)) <-
-    RD.elAttr' "canvas" cameraAttrs RD.blank
-    |> RD.elAttr' "div" ("tabindex" =: "0")
-
-  dCamCx <-
-    CD.dContext2d (CD.CanvasConfig innerEle mempty)
-    |> (fmap . fmap) CD._canvasInfo_context
-
-  (e, _) <- RD.elAttr' "canvas" mapCanvasAttrs RD.blank
-  eDraw <- RD.button "Go"
-
-  dCx <- fmap CD._canvasInfo_context
-    <$> CD.dContext2d (CD.CanvasConfig e mempty)
-
-  let
-    rayCast p rIth rayAngle =
-      let
-        rA = p ^. T.playerFacing . to (R.createRay halfFOV rayAngle)
-
-        -- where RayBeta is the angle of the ray that is being cast relative to
-        -- the viewing angle. I can get away with this because we generate the
-        -- list of betaRays beforehand and we have a known quantity based on the `rayList`
-        rB = betaRays !! rIth
-      in
-        (castSingleRay T.room1 sqrSize rA rB p, rIth)
-
-    buildRays ply = rayCast ply `imap` rayList
-
-    rays cx rs = do
-      C.beginPath cx
-      traverse_ (\(rc,i) -> renderRayCast cx fov sqrSize i rc) rs
-      C.closePath cx
-      C.stroke cx
-
-    camRender
-      :: [(RayCast, Int)]
-      -> CanvasRenderingContext2D
-      -> Double
-      -> JSM ()
-    camRender r cx _ = do
-      C.clearRect cx 0 0 (realToFrac screenWidth) (realToFrac screenHeight)
-      C.save cx
-      C.setFillStyle cx ("lightblue" :: JSString)
-      C.fillRect cx 0 0 (realToFrac screenWidth) (realToFrac screenHeight)
-      C.setFillStyle cx ("darkgrey" :: JSString)
-      C.translate cx (realToFrac $ screenWidth / 2) (realToFrac $ screenHeight / 2)
-      rays cx r
-      C.restore cx
-
-  eLeftBtn <- RD.button "Turn left a bit"
-  eRightBtn <- RD.button "Turn right a bit"
-  eForwardBtn <- RD.button "Turn forward a bit"
-
-  let
-    -- Rotation based on Ray Casting 0 at E, 90 at N, 180 at W, 270 at S
-    rotRight a = T.playerFacing %~ (`T.subtractAngle` a)
-    rotLeft a = T.playerFacing %~ T.addAngle a
-
-    eLeft = RD.keypress RD.ArrowLeft wrapperEle <> eLeftBtn
-    eRight = RD.keypress RD.ArrowRight wrapperEle <> eRightBtn
-    eForward = RD.keypress RD.ArrowUp wrapperEle <> eForwardBtn
-
-    playerSpeed = 10
-
-    moveForward p =
-      R.movePlayer p T.Forward playerSpeed
-
-    moveBackward p =
-      R.movePlayer p T.Backward playerSpeed
-
-    -- eForward = RD.keypress RD.ArrowUp wrapperEle <> eForward
-    eBackward = RD.keypress RD.ArrowDown wrapperEle
-
-  dPlayer <- R.foldDyn ($) player $ R.mergeWith (.)
-    [ rotLeft (Angle 2) <$ eLeft
-    , rotRight (Angle 2) <$ eRight
-    , moveForward <$ eForward
-    , moveBackward <$ eBackward
-    ]
-
-  let
-    dFirstRay = (^. T.playerFacing . to (Ray . T._unAngle . (`T.subtractAngle` halfFOV)) ) <$> dPlayer
-    dLastRay = (^. T.playerFacing . to (Ray . T._unAngle . T.addAngle halfFOV) ) <$> dPlayer
-
-    dFirstHI = mkHorizInters <$> dFirstRay <*> dPlayer
-    dFirstVI = mkVertInters <$> dFirstRay <*> dPlayer
-
-    dLastHI = mkHorizInters <$> dLastRay <*> dPlayer
-    dLastVI = mkVertInters <$> dLastRay <*> dPlayer
-
-  dRays <- R.holdDyn (buildRays player) $
-    buildRays <$> R.updated dPlayer
-
-  let
-    varrr = R.updated dPlayer
-    eMoved = eDraw <> (() <$ varrr)
-
-  let
-    renderer = (renderMap <$> dPlayer <*> dFirstRay <*> dLastRay)
-
-  eRendered <- CD.drawWithCx dCx renderer eMoved
-  eRendered' <- CD.drawWithCx dCamCx (camRender <$> dRays) eMoved
-
-  dRendered <- R.holdDyn "Not Rendered" $
-    "Rendered!" <$ eRendered
-
-  RD.divClass "DEBUG" $
-    RD.display dRendered
-
-  RD.divClass "DEBUG" $
-    RD.display dPlayer
-
 renderSqr
   :: V2 Double
   -> Sqr
@@ -362,6 +252,7 @@ canvasInfoToRenderContext
      f1 (f (CD.CanvasInfo c t)) -> f1 (f (CD.RenderContext c))
 canvasInfoToRenderContext = (fmap . fmap) CD._canvasInfo_context
 
+rayCast :: T.Player -> Int -> Double -> (RayCast, Int)
 rayCast p rIth rayAngle =
   let
     rA = p ^. T.playerFacing . to (R.createRay halfFOV rayAngle)
@@ -372,7 +263,6 @@ rayCast p rIth rayAngle =
     rB = betaRays !! rIth
   in
     (castSingleRay T.room1 sqrSize rA rB p, rIth)
-
 
 createRayTracingCanvases
   :: MonadWidget t m =>
@@ -394,8 +284,12 @@ createRayTracingCanvases = do
   dCx <- mainCanvasInfo |> canvasInfoToRenderContext
   return (wrapperEle, dCamCx, dCx)
 
+buildRays :: T.Player -> [(RayCast, Int)]
 buildRays ply = rayCast ply `imap` rayList
 
+rays
+  :: Foldable t =>
+     CanvasRenderingContext2D -> t (RayCast, Int) -> JSM ()
 rays cx rs = do
   C.beginPath cx
   traverse_ (\(rc,i) -> renderRayCast cx fov sqrSize i rc) rs
@@ -403,10 +297,7 @@ rays cx rs = do
   C.stroke cx
 
 camRender
-  :: [(RayCast, Int)]
-  -> CanvasRenderingContext2D
-  -> Double
-  -> JSM ()
+  :: [(RayCast, Int)] -> CanvasRenderingContext2D -> Double -> JSM ()
 camRender r cx _ = do
   C.clearRect cx 0 0 (realToFrac screenWidth) (realToFrac screenHeight)
   C.save cx
@@ -418,21 +309,39 @@ camRender r cx _ = do
   C.restore cx
 
 -- Rotation based on Ray Casting 0 at E, 90 at N, 180 at W, 270 at S
+
 rotRight a = T.playerFacing %~ (`T.subtractAngle` a)
 rotLeft a = T.playerFacing %~ T.addAngle a
 
+moveForward :: T.Player -> T.Player
 moveForward p =
   R.movePlayer p T.Forward playerSpeed
 
+moveBackward :: T.Player -> T.Player
 moveBackward p =
   R.movePlayer p T.Backward playerSpeed
 
+firstAndLastRay :: Functor f => f T.Player -> (f Ray, f Ray)
 firstAndLastRay player = (firstRay, lastRay)
-  where firstRay = (^. T.playerFacing . to (Ray . T._unAngle . (`T.subtractAngle` halfFOV)) ) <$> player
-        lastRay = (^. T.playerFacing . to (Ray . T._unAngle . T.addAngle halfFOV) ) <$> player
+  where firstRay =
+          (^. T.playerFacing . to (Ray . T._unAngle . (`T.subtractAngle` halfFOV)) )
+          <$> player
+        lastRay =
+          (^. T.playerFacing . to (Ray . T._unAngle . T.addAngle halfFOV) )
+          <$> player
 
-app' :: MonadWidget t m => m ()
-app' = do
+getKeyPress = do
+    preventDefault -- This 'preventDefault' is here to prevent
+                   -- the browser's default behavior when keys
+                   -- like <F1> or the arrow keys are pressed.
+                   -- If you want to preserve default behavior
+                   -- this can be removed, or you can apply it
+                   -- selectively, only to certain keypresses.
+    i <- RD.getKeyEvent
+    return i
+
+app :: MonadWidget t m => m ()
+app = do
   (topLevelWrapper, dCamCx, dCx) <- createRayTracingCanvases
 
   eDraw <- RD.button "Go"
@@ -441,25 +350,37 @@ app' = do
   eForwardBtn <- RD.button "Go forward"
   eBackwardBtn <- RD.button "Go backward"
 
+  doc <- RD.askDocument
+  Just body <- getBody doc
+  kp <- RD.wrapDomEvent body (`on` keyDown) getKeyPress
+
+  let keyPressed =  Just . keyCodeLookup . fromEnum <$> kp
+  lastKeyPressed <- RD.holdDyn Nothing keyPressed
+
   let
-    eLeft = RD.keypress RD.ArrowLeft topLevelWrapper <> eLeftBtn
+    check = (\x -> RD.keypress x topLevelWrapper)
+    [leftPressed, rightPressed, forwardPressed, backwardPressed] =
+      map check [RD.ArrowLeft, RD.ArrowRight, RD.ArrowUp, RD.ArrowDown]
+
+    eLeft = check RD.ArrowLeft <> eLeftBtn
     eRight = RD.keypress RD.ArrowRight topLevelWrapper <> eRightBtn
     eForward = RD.keypress RD.ArrowUp topLevelWrapper <> eForwardBtn
     eBackward = RD.keypress RD.ArrowDown topLevelWrapper <> eBackwardBtn
 
-  dPlayer <- R.foldDyn ($) player $ R.mergeWith (.)
-    [ rotLeft (Angle 2) <$ eLeft
-    , rotRight (Angle 2) <$ eRight
-    , moveForward <$ eForward
-    , moveBackward <$ eBackward
-    ]
+    actions =
+      [ rotLeft (Angle 2) <$ eLeft
+      , rotRight (Angle 2) <$ eRight
+      , moveForward <$ eForward
+      , moveBackward <$ eBackward
+      ]
+
+  dPlayer <- R.foldDyn ($) player $ R.mergeWith (.) actions
 
   let
-    dFirstRay = (^. T.playerFacing . to (Ray . T._unAngle . (`T.subtractAngle` halfFOV)) ) <$> dPlayer
-    dLastRay = (^. T.playerFacing . to (Ray . T._unAngle . T.addAngle halfFOV) ) <$> dPlayer
+    (dFirstRay, dLastRay) = firstAndLastRay dPlayer
+    builtRays = buildRays player
 
-  dRays <- R.holdDyn (buildRays player) $
-    buildRays <$> R.updated dPlayer
+  dRays <- buildRays <$> R.updated dPlayer |> R.holdDyn builtRays
 
   let
     eMoved = eDraw <> (() <$ R.updated dPlayer)
@@ -474,8 +395,11 @@ app' = do
   RD.divClass "DEBUG" $
     RD.display dRendered
 
-  RD.divClass "DEBUG" $
-    RD.display dPlayer
+  dLeftPressed <- R.holdDyn "Not pressed" $
+    "Pressed" <$ leftPressed
+
+  RD.display lastKeyPressed
 
 main :: IO ()
-main = run 3911 $ mainWidgetWithCss css app'
+main = run 3911 $ mainWidgetWithCss css app
+-- main = run 3911 $ mainWidget app

@@ -35,6 +35,8 @@ executable frontend
                      , linear >1.20 && <1.30
                      , monad-par >0.3 && <0.4
                      , monad-par-extras >0.3 && <0.4
+                     , ghcjs-dom
+                     , keycode
 
   hs-source-dirs:      src
   main-is:             Main.hs
