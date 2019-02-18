@@ -32,11 +32,12 @@ infixl 0 |>
 data SqType
   = Wall
   | Floor
+  | Active
   deriving (Generic, NFData, Eq,Show)
 
 data Sqr = Sqr
   { _sqType :: SqType
-  , _sqSide :: Word8
+  , _sqSide :: Int
   }
   deriving (Eq, Generic, NFData, Show)
 
@@ -44,46 +45,63 @@ newtype Room = Room
   { unRoom :: [[Sqr]]
   }
 
+sqrSize :: Int
+sqrSize = 10
+
+sqrSizeF :: Float
+sqrSizeF = fromIntegral sqrSize
+
 room1 :: Room
 room1 = Room [ [w,w,w,w,w,w,w,w]
              , [w,f,w,f,f,f,f,w]
              , [w,f,f,f,f,w,f,w]
-             , [w,f,f,f,f,w,f,w]
+             , [w,f,f,a,f,w,f,w]
              , [w,f,f,f,f,f,f,w]
              , [w,f,f,f,w,w,w,w]
              , [w,w,f,f,f,f,f,w]
              , [w,w,w,w,w,w,w,w]
              ]
-  where w = Sqr Wall 64
-        f = Sqr Floor 64
+  where w = Sqr Wall sqrSize
+        f = Sqr Floor sqrSize
+        a = Sqr Active sqrSize
+
+sqColour :: Sqr -> JSString
+sqColour sq = case _sqType sq of
+  Wall -> "darkgrey"
+  Floor -> "aqua"
+  _ -> "white"
 
 renderSqr
-  :: V2 Double
+  :: CanvasRenderingContext2D
+  -> V2 Float
   -> Sqr
-  -> CanvasRenderingContext2D
   -> JSM ()
-renderSqr pos sq cx = do
-  C.setFillStyle cx sqColour
-  C.fillRect cx (p _x) (p _y) sqS sqS
+renderSqr cx pos sq = do
+  C.setFillStyle cx $ sqColour sq
+  C.fillRect cx xPos yPos sqrSizeF sqrSizeF
   C.setStrokeStyle cx ("black" :: JSString)
-  C.strokeRect cx (p _x) (p _y) sqS sqS
+  C.strokeRect cx xPos yPos sqrSizeF sqrSizeF
   where
-    sqS = fromIntegral sqrSize
-    p l = pos ^. l . to realToFrac
+    pos' getter = pos ^. getter . to realToFrac
+    xPos = pos' _x
+    yPos = pos' _y
 
-    sqColour :: JSString
-    sqColour = case _sqType sq of
-      Wall -> "darkgrey"
-      Floor -> "aqua"
+-- width (Room [rms]) = Prelude.length rms * sqrSize
+width :: Room -> Int
+width (Room []) = 10
+width (Room x) = Prelude.length (x !! 0) * sqrSize
 
-screenWidth :: Double
-screenWidth = 320
+screenWidth :: Float
+-- screenWidth = 320
+-- screenWidth = 640
+screenWidth = fromIntegral $ width room1
 
-screenHeight :: Double
-screenHeight = 240
+height (Room rm) = Prelude.length rm * sqrSize
 
-sqrSize :: Int
-sqrSize = 64
+screenHeight :: Float
+-- screenHeight = 240
+-- screenHeight = 480
+screenHeight = fromIntegral $ height room1
 
 emptyDiv :: Map.Map Text.Text Text.Text
 emptyDiv = Map.fromList []
@@ -126,31 +144,27 @@ createBlankCanvas = do
   return (wrapperEle, dCx)
 
 renderRoom :: Room -> CanvasRenderingContext2D -> JSM ()
-renderRoom (Room rm) cx =
+renderRoom (Room roomTiles) cx =
   let
-    o = V2 0.0 0.0
-    xStep = V2 (fromIntegral sqrSize) 0.0
-    yStep = V2 0.0  (fromIntegral sqrSize)
+    initialPos = V2 0.0 0.0
+    xStep = V2 sqrSizeF 0.0
+    yStep = V2 0.0 sqrSizeF
 
-    rSqrs sq offs =
-      renderSqr offs sq cx $> offs
+    renderSqr' :: Sqr -> V2 Float -> JSM (V2 Float)
+    renderSqr' sq offset = renderedSquare $> offset
+      where renderedSquare = renderSqr cx offset sq
+
+    test pos square = (xStep +) <$> renderSqr' square pos
+
+    foo pos sqs = yStep + pos <$ foldlM test pos sqs
   in
-    --- Hrmmm
-    void $ foldlM
-      (\o' sqs ->
-          yStep + o' <$ foldlM
-          (\o'' s ->
-              (xStep +) <$> rSqrs s o''
-          ) o' sqs
-      ) o rm
+    void $ foldlM foo initialPos roomTiles
 
--- >>> :t (<$>)
--- (<$>) :: Functor f => (a -> b) -> f a -> f b
+-- >>> :t ($>)
+-- ($>) :: Functor f => f a -> b -> f b
 
--- >>> :t (<*>)
--- (<*>) :: Applicative f => f (a -> b) -> f a -> f b
-
---    renderer = (renderMap <$> dPlayer <*> dFirstRay <*> dLastRay)
+-- >>> :t (<$)
+-- (<$) :: Functor f => a -> f b -> f a
 
 renderMap cx _ _ = do
   renderRoom room1 cx
