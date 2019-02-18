@@ -53,7 +53,6 @@ infixl 0 |>
 (|>) :: a -> (a -> c) -> c
 (|>) = flip ($)
 
-
 screenWidth :: Double
 screenWidth = 320
 
@@ -111,6 +110,9 @@ cameraAttrs = Map.fromList
   -- , ("style", "transform-origin: 0 0;transform: scale(1.5, 1.5);")
   ]
 
+calculateRayCast
+  :: (Fractional t, Integral t1) =>
+     FOV -> Int -> t1 -> RayCast -> (t, Double, Double)
 calculateRayCast fov slice rIth rc = (x, y, sliceHeight)
   where width = fov ^. T.fovWidth . _Wrapped . to fromIntegral
         height = fov ^. T.fovHeight . _Wrapped . to fromIntegral
