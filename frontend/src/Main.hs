@@ -30,6 +30,7 @@ import GHCJS.DOM.EventM (on, preventDefault)
 import GHCJS.DOM.GlobalEventHandlers (keyDown)
 import Web.KeyCode
 
+import Squares (squaresApp)
 import DrawM (DrawM, runDrawM)
 import Style (css)
 import RayCaster (castSingleRay)
@@ -395,11 +396,8 @@ app = do
   RD.divClass "DEBUG" $
     RD.display dRendered
 
-  dLeftPressed <- R.holdDyn "Not pressed" $
-    "Pressed" <$ leftPressed
-
   RD.display lastKeyPressed
 
 main :: IO ()
-main = run 3911 $ mainWidgetWithCss css app
+main = run 3911 $ mainWidgetWithCss css squaresApp
 -- main = run 3911 $ mainWidget app

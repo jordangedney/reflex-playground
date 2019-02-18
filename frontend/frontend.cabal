@@ -37,6 +37,8 @@ executable frontend
                      , monad-par-extras >0.3 && <0.4
                      , ghcjs-dom
                      , keycode
+                     , jsaddle
+                     , time
 
   hs-source-dirs:      src
   main-is:             Main.hs
