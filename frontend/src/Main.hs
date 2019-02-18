@@ -32,7 +32,7 @@ import Web.KeyCode
 
 import Squares (squaresApp)
 import DrawM (DrawM, runDrawM)
-import Style (css)
+import Style (css, blackBkground)
 import RayCaster (castSingleRay)
 import Types (Angle (..), FOV (..), Height (..), Ray (Ray), RayBeta (RayBeta), RayCast,
               Room (..), SqType (..), Sqr (..), Width (..))
@@ -401,5 +401,5 @@ app = do
   RD.display lastKeyPressed
 
 main :: IO ()
-main = run 3911 $ mainWidgetWithCss css squaresApp
--- main = run 3911 $ mainWidget app
+main = run 3911 $ mainWidgetWithCss blackBkground squaresApp
+-- main = run 3911 $ mainWidget squaresApp

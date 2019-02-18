@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo, ScopedTypeVariables, FlexibleContexts, TypeFamilies, ConstraintKinds #-}
-module Style (css) where
+module Style (css, blackBkground) where
 
 import Prelude hiding (mapM, mapM_, all, sequence)
 
@@ -306,6 +306,17 @@ css' = " \
     \    position: relative;\
     \    z-index: 2;\
     \    border-top: 1px solid #e6e6e6;\
+    \}\
+    \\
+    \"
+
+blackBkground = encodeUtf8 blackBkground'
+
+blackBkground'  :: Text
+blackBkground' = " \
+    \html,\
+    \body {\
+    \    background-color: black;\
     \}\
     \\
     \"

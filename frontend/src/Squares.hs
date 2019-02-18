@@ -35,6 +35,10 @@ data SqType
   | Active
   deriving (Generic, NFData, Eq,Show)
 
+wall = Sqr Wall sqrSize
+floor = Sqr Floor sqrSize
+active = Sqr Active sqrSize
+
 data Sqr = Sqr
   { _sqType :: SqType
   , _sqSide :: Int
@@ -46,10 +50,15 @@ newtype Room = Room
   }
 
 sqrSize :: Int
-sqrSize = 10
+sqrSize = 15
 
 sqrSizeF :: Float
 sqrSizeF = fromIntegral sqrSize
+
+roomWidth (Room room) = Prelude.length (room !! 0)
+roomHeight (Room room) = Prelude.length room
+
+roomToUse = room2
 
 room1 :: Room
 room1 = Room [ [w,w,w,w,w,w,w,w]
@@ -61,9 +70,25 @@ room1 = Room [ [w,w,w,w,w,w,w,w]
              , [w,w,f,f,f,f,f,w]
              , [w,w,w,w,w,w,w,w]
              ]
-  where w = Sqr Wall sqrSize
-        f = Sqr Floor sqrSize
-        a = Sqr Active sqrSize
+  where w = wall
+        f = Squares.floor
+        a = active
+
+addBoundary :: Room -> Room
+addBoundary rm@(Room squares) = Room ([newWall] ++ newSqrs ++ [newWall])
+  where newWall = Prelude.take (roomWidth rm + 2) $ repeat wall
+        newSqrs = Prelude.map (\sqrs -> [wall] ++ sqrs ++ [wall]) squares
+
+room2 = addBoundary $ Room [ [f,w,f,f,f,f]
+                           , [f,f,f,f,w,f]
+                           , [f,f,a,f,w,f]
+                           , [f,f,f,f,f,f]
+                           , [f,f,f,w,w,w]
+                           , [w,f,f,f,f,f]
+                           ]
+  where w = wall
+        f = Squares.floor
+        a = active
 
 sqColour :: Sqr -> JSString
 sqColour sq = case _sqType sq of
@@ -86,25 +111,14 @@ renderSqr cx pos sq = do
     xPos = pos' _x
     yPos = pos' _y
 
--- width (Room [rms]) = Prelude.length rms * sqrSize
-width :: Room -> Int
-width (Room []) = 10
-width (Room x) = Prelude.length (x !! 0) * sqrSize
-
 screenWidth :: Float
--- screenWidth = 320
--- screenWidth = 640
-screenWidth = fromIntegral $ width room1
-
-height (Room rm) = Prelude.length rm * sqrSize
+screenWidth = fromIntegral $ roomWidth roomToUse * sqrSize
 
 screenHeight :: Float
--- screenHeight = 240
--- screenHeight = 480
-screenHeight = fromIntegral $ height room1
+screenHeight = fromIntegral $ roomHeight roomToUse * sqrSize
 
-emptyDiv :: Map.Map Text.Text Text.Text
-emptyDiv = Map.fromList []
+noAttrs :: Map.Map Text.Text Text.Text
+noAttrs = Map.fromList []
 
 canvasAttrs :: Map.Map Text.Text Text.Text
 canvasAttrs = Map.fromList
@@ -128,7 +142,7 @@ tableDiv
   :: RD.MonadWidget t m
   => m a
   -> m (RD.Element RD.EventResult (RD.DomBuilderSpace m) t, a)
-tableDiv = RD.elAttr' "div" emptyDiv
+tableDiv = RD.elAttr' "div" noAttrs
 
 createBlankCanvas
   :: RD.MonadWidget t m
@@ -160,25 +174,8 @@ renderRoom (Room roomTiles) cx =
   in
     void $ foldlM foo initialPos roomTiles
 
--- >>> :t ($>)
--- ($>) :: Functor f => f a -> b -> f b
-
--- >>> :t (<$)
--- (<$) :: Functor f => a -> f b -> f a
-
 renderMap cx _ _ = do
-  renderRoom room1 cx
-  -- renderPlayer p cx
-
-  -- C.setFillStyle cx ("blue" :: JSString)
-  -- traverse_ (drawInters cx . fst) (mkHorizInters firstRay p)
-  -- C.setFillStyle cx ("green" :: JSString)
-  -- traverse_ (drawInters cx . fst) (mkVertInters firstRay p)
-
-  -- C.setFillStyle cx ("blue" :: JSString)
-  -- traverse_ (drawInters cx . fst) (mkHorizInters lastRay p)
-  -- C.setFillStyle cx ("green" :: JSString)
-  -- traverse_ (drawInters cx . fst) (mkVertInters lastRay p)
+  renderRoom roomToUse cx
 
 squaresApp :: RD.MonadWidget t m => m ()
 squaresApp = do
@@ -190,8 +187,12 @@ squaresApp = do
 
   pure ()
 
-  -- RD.divClass "DEBUG" $
-  --   RD.display "Hello"
+dynamicallySizedSquaresApp :: RD.MonadWidget t m => m ()
+dynamicallySizedSquaresApp = do
+  (topLevelWrapper,  dCx) <- createBlankCanvas
 
--- main :: IO ()
--- main = Warp.run 3911 $ RD.mainWidget app
+  eDraw <- RD.button "Go"
+
+  eRendered <- CD.drawWithCx dCx (renderMap <$> dCx) eDraw
+
+  pure ()
