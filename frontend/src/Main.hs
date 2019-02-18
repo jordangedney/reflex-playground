@@ -43,7 +43,7 @@ import qualified Reflex.Dom as RD
 import qualified Data.Map as Map
 import qualified JSDOM.CanvasRenderingContext2D as C
 import qualified JSDOM.CanvasPath as C
-import qualified Reflex.Dom.CanvasBuilder.Types as CD
+import qualified Reflex.Dom.CanvasBuilder.Types as CBT
 import qualified Reflex.Dom.CanvasDyn as CD
 import qualified RayCaster as R
 import qualified RayWut as R
@@ -252,8 +252,8 @@ tableDiv = RD.elAttr' "div" ("tabindex" =: "0")
 
 canvasInfoToRenderContext
   :: (Functor f1, Functor f) =>
-     f1 (f (CD.CanvasInfo c t)) -> f1 (f (CD.RenderContext c))
-canvasInfoToRenderContext = (fmap . fmap) CD._canvasInfo_context
+     f1 (f (CBT.CanvasInfo c t)) -> f1 (f (CBT.RenderContext c))
+canvasInfoToRenderContext = (fmap . fmap) CBT._canvasInfo_context
 
 rayCast :: T.Player -> Int -> Double -> (RayCast, Int)
 rayCast p rIth rayAngle =
@@ -277,7 +277,7 @@ createRayTracingCanvases = do
   (e, _) <- blankCanvas mapCanvasAttrs
 
   let
-    emptyConfig element = CD.CanvasConfig element mempty
+    emptyConfig element = CBT.CanvasConfig element mempty
     cameraCanvasConfig = emptyConfig innerEle
     innerCanvasInfo = CD.dContext2d cameraCanvasConfig
     mapCanvasConfig = emptyConfig e

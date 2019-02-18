@@ -20,7 +20,7 @@ import JSDOM.CanvasRenderingContext2D (CanvasRenderingContext2D)
 
 import qualified JSDOM.CanvasRenderingContext2D as C
 import qualified Reflex.Dom as RD
-import qualified Reflex.Dom.CanvasBuilder.Types as CD
+import qualified Reflex.Dom.CanvasBuilder.Types as CBT
 import qualified Reflex.Dom.CanvasDyn as CD
 import Data.Map as Map
 import JSDOM.Types as JSDOMTypes
@@ -97,8 +97,8 @@ canvasAttrs = Map.fromList
 
 canvasInfoToRenderContext
   :: (Functor f1, Functor f) =>
-     f1 (f (CD.CanvasInfo c t)) -> f1 (f (CD.RenderContext c))
-canvasInfoToRenderContext = (fmap . fmap) CD._canvasInfo_context
+     f1 (f (CBT.CanvasInfo c t)) -> f1 (f (CBT.RenderContext c))
+canvasInfoToRenderContext = (fmap . fmap) CBT._canvasInfo_context
 
 blankCanvas
   :: RD.MonadWidget t m
@@ -119,7 +119,7 @@ createBlankCanvas
 createBlankCanvas = do
   (wrapperEle, (innerEle, _)) <- blankCanvas canvasAttrs |> tableDiv
 
-  let emptyConfig = CD.CanvasConfig innerEle mempty
+  let emptyConfig = CBT.CanvasConfig innerEle mempty
       innerCanvasInfo = CD.dContext2d emptyConfig
 
   dCx <- innerCanvasInfo |> canvasInfoToRenderContext
@@ -144,8 +144,15 @@ renderRoom (Room rm) cx =
           ) o' sqs
       ) o rm
 
-renderMap  :: CanvasRenderingContext2D -> t -> JSM ()
-renderMap cx _ = do
+-- >>> :t (<$>)
+-- (<$>) :: Functor f => (a -> b) -> f a -> f b
+
+-- >>> :t (<*>)
+-- (<*>) :: Applicative f => f (a -> b) -> f a -> f b
+
+--    renderer = (renderMap <$> dPlayer <*> dFirstRay <*> dLastRay)
+
+renderMap cx _ _ = do
   renderRoom room1 cx
   -- renderPlayer p cx
 
@@ -164,12 +171,13 @@ squaresApp = do
   (topLevelWrapper,  dCx) <- createBlankCanvas
 
   eDraw <- RD.button "Go"
-  --renderer = (renderMap <$> dPlayer <*> dFirstRay <*> dLastRay)
 
-  eRendered <- CD.drawWithCx dCx renderMap eDraw
-  -- eRendered <- CD.drawWithCx dCx renderer eMoved
-  RD.divClass "DEBUG" $
-    RD.display "Hello"
+  eRendered <- CD.drawWithCx dCx (renderMap <$> dCx) eDraw
+
+  pure ()
+
+  -- RD.divClass "DEBUG" $
+  --   RD.display "Hello"
 
 -- main :: IO ()
 -- main = Warp.run 3911 $ RD.mainWidget app
