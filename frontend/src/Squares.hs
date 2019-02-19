@@ -1,6 +1,7 @@
-{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE RankNTypes #-}
 module Squares where
 
 import Control.Monad (void)
@@ -184,12 +185,12 @@ squaresApp = do
   eDraw <- RD.button "Go"
 
   eRendered <- CD.drawWithCx dCx (renderMap <$> dCx) eDraw
-
   pure ()
 
-dynamicallySizedSquaresApp :: RD.MonadWidget t m => m ()
+dynamicallySizedSquaresApp :: forall t m. (RD.MonadWidget t m) => m ()
 dynamicallySizedSquaresApp = do
   (topLevelWrapper,  dCx) <- createBlankCanvas
+  x <- RD.hold True
 
   eDraw <- RD.button "Go"
 
