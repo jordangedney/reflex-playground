@@ -1,19 +1,7 @@
-Reflex Demo Game
+Reflex Playground
 ================
 
-Not so much of a "game" as yet, given there are no goals or victory conditions, but it does have a sweet as ray-caster.
-
-You can look around and that seems to work, but moving is a bit wonky. Use the arrow keys. You have to click the top canvas before the keys will register. I didn't do a global bind on the key events, only key events that are triggered from the canvas.
-
-![image](screenshot.png "A screenshot showing rendering screen and map
-display")
-
-### To Build
-
-I use nix to work on this, and setting up
-[reflex-platform](https://github.com/reflex-frp/reflex-platform) requires nix as
-well. You are welcome to try building this without nix, but I cannot help you.
-Smooth building isn't a priority at this stage of development. :)
+[reflex-platform](https://github.com/reflex-frp/reflex-platform)
 
 To enter a `nix-shell` to poke things with GHC available (faster builds):
 
