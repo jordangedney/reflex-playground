@@ -39,6 +39,7 @@ executable frontend
                      , keycode
                      , jsaddle
                      , time
+                     , file-embed
 
   hs-source-dirs:      src
   main-is:             Main.hs
