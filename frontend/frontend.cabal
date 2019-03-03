@@ -30,7 +30,7 @@ executable frontend
                      , reflex-dom-core == 0.4
                      , jsaddle-warp >0.9 && <0.10
                      , jsaddle-dom >0.9 && <0.10
-                     , reflex-dom-canvas >0.1 && <0.2
+                     , reflex-dom-canvas
                      , mtl >2.2 && <2.3
                      , linear >1.20 && <1.30
                      , monad-par >0.3 && <0.4
