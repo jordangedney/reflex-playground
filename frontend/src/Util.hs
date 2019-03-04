@@ -6,8 +6,12 @@ module Util where
 import qualified Data.Map as Map
 import qualified Reflex.Dom as RD
 import qualified Data.Text as T
+
 import Control.Monad.Fix (MonadFix)
 
+import JSDOM (currentWindowUnchecked)
+import JSDOM.Types (Window)
+import JSDOM.Generated.Window (getInnerWidth, getInnerHeight)
 -- Used for style sheet embeding:
 -- import Data.FileEmbed
 
@@ -59,3 +63,10 @@ mkHeadElement title styleSheetPath = do
       ]) $ RD.blank
     -- Not used, but this is how you embed
     -- css = $(embedFile styleSheetPath)
+
+screenSize :: RD.MonadWidget t m =>  m (Int, Int)
+screenSize = do
+  w <- currentWindowUnchecked
+  width <- getInnerWidth w
+  height <- getInnerHeight w
+  return (width, height)
