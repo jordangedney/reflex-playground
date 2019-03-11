@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Util where
 
@@ -12,6 +14,11 @@ import Control.Monad.Fix (MonadFix)
 import JSDOM (currentWindowUnchecked)
 import JSDOM.Types (Window)
 import JSDOM.Generated.Window (getInnerWidth, getInnerHeight)
+import qualified Reflex.Dom.CanvasBuilder.Types as CBT
+import qualified Reflex.Dom.CanvasDyn as CDyn
+import Data.Monoid ((<>))
+import Reflex.Dom ((=:))
+
 -- Used for style sheet embeding:
 -- import Data.FileEmbed
 
@@ -70,3 +77,18 @@ screenSize = do
   width <- getInnerWidth w
   height <- getInnerHeight w
   return (width, height)
+
+canvasAttrs :: Int -> Int -> Map.Map T.Text T.Text
+canvasAttrs width height =
+  ("width" =: (T.pack . show $ width)) <>
+  ("height" =: (T.pack . show $ height)) <>
+  ("style" =: "background-color: white")
+
+createBlankCanvas width height = do
+  (innerEle, _) <- RD.elAttr' "canvas" (canvasAttrs width height) RD.blank
+
+  let emptyConfig = CBT.CanvasConfig innerEle mempty
+      innerCanvasInfo = CDyn.dContext2d emptyConfig
+
+  dCx <- (fmap . fmap) CBT._canvasInfo_context innerCanvasInfo
+  return dCx
