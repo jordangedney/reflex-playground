@@ -3,35 +3,21 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE JavaScriptFFI #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module RandomFloodFill (headElement, bodyElement) where
 
----
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import Data.Text.Encoding (decodeUtf8)
-import qualified Data.ByteString.Base64 as B64 (encode)
-import Language.Javascript.JSaddle (js, js1, jss, jsg, jsg1,
-                                    new, pToJSVal, GHCJSPure(..), ghcjsPure, JSM,
-                                    fromJSVal, toJSVal, Object, liftJSM)
-
-import JSDOM.Types (liftDOM, Uint8ClampedArray(..), RenderingContext(..))
-import JSDOM.ImageData
-import JSDOM.HTMLCanvasElement
-import JSDOM.CanvasRenderingContext2D
-import GHCJS.Buffer (getArrayBuffer, MutableBuffer)
-import GHCJS.Buffer.Types (SomeBuffer(..))
-import Control.Lens ((^.))
-
 import Util
+import JSUtil
 
 -- Qualified -------------------------------------------------------------------
 
-import qualified Data.ByteString.Base64 as B64
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import qualified Data.Monoid
 
+import qualified Reflex as R
 import qualified Reflex.Dom as RD
 import qualified Reflex.Dom.CanvasBuilder.Types as CBT
 import qualified Reflex.Dom.CanvasDyn as CDyn
@@ -40,11 +26,14 @@ import qualified JSDOM.ImageData as ID
 
 -- Direct ----------------------------------------------------------------------
 
+import qualified GHCJS.DOM as JSDOM
+import Data.IORef (IORef, readIORef, modifyIORef)
 import Data.ByteString (ByteString)
 import Data.Time (getCurrentTime)
 import Control.Monad.Trans (liftIO)
 import Data.Monoid ((<>))
 import Foreign.Ptr (Ptr)
+import Data.Maybe (fromMaybe)
 
 import JSDOM.Types (
   JSString,
@@ -52,59 +41,48 @@ import JSDOM.Types (
   unUint8ClampedArray,
   Uint8ClampedArray,
   JSVal,
+  JSM,
   )
 import JSDOM.CanvasRenderingContext2D (CanvasRenderingContext2D)
 import Reflex.Dom ((=:))
+import Reflex.Pure (unEvent)
 
 --------------------------------------------------------------------------------
 
 headElement :: RD.MonadWidget t m => m ()
 headElement = mkHeadElement "Random Flood Fill" "css/simple.css"
 
-bodyElement :: RD.MonadWidget t m => m ()
-bodyElement = do
+
+getVal :: RD.Event t a -> Maybe a
+getVal e = do
+  y <- unEvent e
+  return y
+
+bodyElement :: RD.MonadWidget t m => IORef Int -> m ()
+bodyElement cntr = do
   (width, height) <- screenSize
   evStart <- RD.getPostBuild
-  now <- liftIO getCurrentTime
 
-  -- evTick <- tE $ RD.tickLossy 1 now
-  evTick <- RD.tickLossy 1 now
+  evTick <- RD.tickLossy 0.01 =<< liftIO getCurrentTime
+  let temp = RD._tickInfo_n <$> evTick
+  -- test <- (\y -> unEvent y temp)
+  -- let h = RD.value test
 
   dCx <- createBlankCanvas $
           (canvasAttrs width height) <>
           ("imageRendering" =: "pixelated")
 
-  evRendered <- CDyn.drawWithCx dCx ((\cx _ _ -> render cx) <$> dCx) (() <$ evTick)
+  z <- liftIO $ readIORef cntr
+  evRendered <- drawWithCx' dCx ((\cx _ _ -> render z cx) <$> dCx) (() <$ evTick)
+  liftIO $ modifyIORef cntr (+1)
 
   pure ()
 
-render :: MonadJSM m => CanvasRenderingContext2D -> m ()
-render cx = do
-  -- t <- C.getImageData cx 0 0 0 0
-  -- x <- ID.getData t
-  -- let y = unUint8ClampedArray x
-
-  let smallImage = BS.pack [0xff,0x00,0x00,0xff,  0xff,0x00,0x00,0xff,  0xff,0x00,0x00,0xff,
-                            0x00,0x00,0x00,0xff,  0x00,0xff,0x00,0xff,  0x00,0x00,0x00,0xff,
-                            0x00,0x00,0xff,0xff,  0x00,0x00,0xff,0xff,  0x00,0x00,0xff,0xff,
-                            0x00,0x00,0xff,0xff,  0x00,0x00,0x00,0xff,  0x00,0x00,0xff,0xff]
-  img <- liftJSM $ makeImageData 3 4 smallImage
-  t' <- C.putImageData cx img 3 4
-
-  -- C.setFillStyle cx ("blue" :: JSString)
-  -- C.fillRect cx 50  50 10 10
-  -- C.setStrokeStyle cx ("black" :: JSString)
-  -- C.strokeRect cx 50 50 10 10
+render :: MonadJSM m => Int -> CanvasRenderingContext2D -> m ()
+render cntr cx = do
+  let (w, h) = (cntr, cntr)
+  let blackPixel = [0x00, 0x00, 0x00,0xff]
+  let smallImage = concat $ take (w * h) $ repeat blackPixel
+  img <- makeImageData w h smallImage
+  C.putImageData cx img 0 0
   pure ()
-
-uint8ClampedArrayFromByteString :: ByteString -> GHCJSPure (Uint8ClampedArray)
-uint8ClampedArrayFromByteString bs = GHCJSPure $ do
-  buffer <- SomeBuffer <$> jsg1 (T.pack "h$newByteArrayFromBase64String")
-                                (decodeUtf8 $ B64.encode bs)
-  arrbuff <- ghcjsPure (getArrayBuffer (buffer :: MutableBuffer))
-  liftDOM (Uint8ClampedArray <$> new (jsg (T.pack "Uint8ClampedArray")) [pToJSVal arrbuff])
-
-makeImageData :: Int -> Int -> ByteString -> JSM ImageData
-makeImageData width height dat
-  = do dat' <- ghcjsPure (uint8ClampedArrayFromByteString dat)
-       newImageData dat' (fromIntegral width) (Just (fromIntegral height))
