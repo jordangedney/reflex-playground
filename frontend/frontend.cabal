@@ -40,6 +40,7 @@ executable frontend
                      , jsaddle
                      , time
                      , file-embed
+                     , base64-bytestring
 
   hs-source-dirs:      src
   main-is:             Main.hs

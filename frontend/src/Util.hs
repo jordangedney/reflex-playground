@@ -84,8 +84,8 @@ canvasAttrs width height =
   ("height" =: (T.pack . show $ height)) <>
   ("style" =: "background-color: white")
 
-createBlankCanvas width height = do
-  (innerEle, _) <- RD.elAttr' "canvas" (canvasAttrs width height) RD.blank
+createBlankCanvas attrs = do
+  (innerEle, _) <- RD.elAttr' "canvas" attrs RD.blank
 
   let emptyConfig = CBT.CanvasConfig innerEle mempty
       innerCanvasInfo = CDyn.dContext2d emptyConfig
