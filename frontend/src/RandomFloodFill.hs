@@ -57,29 +57,34 @@ bodyElement cntr = do
   (width, height) <- screenSize
   evStart <- RD.getPostBuild
 
-  -- evTick <- RD.tickLossy 0.01 =<< liftIO getCurrentTime
-  evTick <- tE $ RD.tickLossy 1 =<< liftIO getCurrentTime
+  evTick <- RD.tickLossy 0.01 =<< liftIO getCurrentTime
   dyGameTick <- RD.count evTick
+  let dyState = getSize <$> dyGameTick
 
   dCx <- createBlankCanvas $
           (canvasAttrs width height) <>
           ("imageRendering" =: "pixelated")
 
-  let renderer = (\gameTick cx _ -> render gameTick cx) <$> dyGameTick
+  let renderer = (\state cx _ -> render state cx) <$> dyState
   evRendered <- CDyn.drawWithCx dCx renderer (() <$ evTick)
 
   pure ()
 
-render :: MonadJSM m => Int -> CanvasRenderingContext2D -> m ()
-render cntr cx = do
-  if cntr > 0
-  then do
-    -- XXX Width and height have to be even numbers
-    let (w, h) = (cntr * 2, cntr * 2)
-    let blackPixel = [0x00, 0x00, 0x00,0xff]
-    let smallImage = concat $ take (w * h) $ repeat blackPixel
-    img <- makeImageData w h smallImage
-    C.putImageData cx img 0 0
-    pure ()
-  else
-    pure ()
+data State = State
+  { width :: Int
+  , height :: Int
+  }
+
+getSize :: Int -> State
+getSize gameTick =
+  -- XXX Width and height have to be even numbers
+  if gameTick > 0 then (State (gameTick * 2) (gameTick * 2)) else State 2 2
+
+render :: MonadJSM m => State -> CanvasRenderingContext2D -> m ()
+render st cx = do
+  let (w, h) = (width st, height st)
+  let blackPixel = [0x00, 0x00, 0x00,0xff]
+  let smallImage = concat $ take (w * h) $ repeat blackPixel
+  img <- makeImageData w h smallImage
+  C.putImageData cx img 0 0
+  pure ()
