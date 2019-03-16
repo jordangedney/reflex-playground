@@ -42,25 +42,3 @@ makeImageData' width height dat
 makeImageData x y z = do
   x' <- liftJSM $ makeImageData' x y z
   return x'
-
--- (RD.<@)
---   :: RD.Reflex t => RD.Behavior t b -> RD.Event t a -> RD.Event t b
-
-drawWithCx'
-  :: ( RD.MonadWidget t m
-     , CBT.HasRenderFn c ( CBT.RenderContext c )
-     )
-  => RD.Dynamic t ( CBT.RenderContext c )
-  -> RD.Dynamic t ( CBT.RenderContext c -> Double -> JSM a )
-  -> RD.Event t ()
-  -> m ( RD.Event t a )
-drawWithCx' dContext dAction eApply =
-  let
-    nextFrame cx f = liftJSM $
-      JSDOM.nextAnimationFrame (f cx)
-    huh = ( nextFrame
-            <$> R.current dContext
-            <*> R.current dAction
-            RD.<@ eApply )
-  in
-    RD.performEvent huh

@@ -52,37 +52,34 @@ import Reflex.Pure (unEvent)
 headElement :: RD.MonadWidget t m => m ()
 headElement = mkHeadElement "Random Flood Fill" "css/simple.css"
 
-
-getVal :: RD.Event t a -> Maybe a
-getVal e = do
-  y <- unEvent e
-  return y
-
 bodyElement :: RD.MonadWidget t m => IORef Int -> m ()
 bodyElement cntr = do
   (width, height) <- screenSize
   evStart <- RD.getPostBuild
 
-  evTick <- RD.tickLossy 0.01 =<< liftIO getCurrentTime
-  let temp = RD._tickInfo_n <$> evTick
-  -- test <- (\y -> unEvent y temp)
-  -- let h = RD.value test
+  -- evTick <- RD.tickLossy 0.01 =<< liftIO getCurrentTime
+  evTick <- tE $ RD.tickLossy 1 =<< liftIO getCurrentTime
+  dyGameTick <- RD.count evTick
 
   dCx <- createBlankCanvas $
           (canvasAttrs width height) <>
           ("imageRendering" =: "pixelated")
 
-  z <- liftIO $ readIORef cntr
-  evRendered <- drawWithCx' dCx ((\cx _ _ -> render z cx) <$> dCx) (() <$ evTick)
-  liftIO $ modifyIORef cntr (+1)
+  let renderer = (\gameTick cx _ -> render gameTick cx) <$> dyGameTick
+  evRendered <- CDyn.drawWithCx dCx renderer (() <$ evTick)
 
   pure ()
 
 render :: MonadJSM m => Int -> CanvasRenderingContext2D -> m ()
 render cntr cx = do
-  let (w, h) = (cntr, cntr)
-  let blackPixel = [0x00, 0x00, 0x00,0xff]
-  let smallImage = concat $ take (w * h) $ repeat blackPixel
-  img <- makeImageData w h smallImage
-  C.putImageData cx img 0 0
-  pure ()
+  if cntr > 0
+  then do
+    -- XXX Width and height have to be even numbers
+    let (w, h) = (cntr * 2, cntr * 2)
+    let blackPixel = [0x00, 0x00, 0x00,0xff]
+    let smallImage = concat $ take (w * h) $ repeat blackPixel
+    img <- makeImageData w h smallImage
+    C.putImageData cx img 0 0
+    pure ()
+  else
+    pure ()
