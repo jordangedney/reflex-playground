@@ -34,7 +34,8 @@ uint8ClampedArrayFromByteString bs = GHCJSPure $ do
   arrbuff <- ghcjsPure (getArrayBuffer (buffer :: MutableBuffer))
   liftDOM (Uint8ClampedArray <$> new (jsg (T.pack "Uint8ClampedArray")) [pToJSVal arrbuff])
 
-makeImageData' :: Int -> Int -> [Word8] -> JSM ImageData
+type Pixel = [Word8]
+makeImageData' :: Integer -> Integer -> [Word8] -> JSM ImageData
 makeImageData' width height dat
   = do dat' <- ghcjsPure (uint8ClampedArrayFromByteString (BS.pack dat))
        newImageData dat' (fromIntegral width) (Just (fromIntegral height))

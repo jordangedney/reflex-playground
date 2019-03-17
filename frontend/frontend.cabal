@@ -41,6 +41,7 @@ executable frontend
                      , time
                      , file-embed
                      , base64-bytestring
+                     , random
 
   hs-source-dirs:      src
   main-is:             Main.hs

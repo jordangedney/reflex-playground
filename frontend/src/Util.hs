@@ -71,14 +71,14 @@ mkHeadElement title styleSheetPath = do
     -- Not used, but this is how you embed
     -- css = $(embedFile styleSheetPath)
 
-screenSize :: RD.MonadWidget t m =>  m (Int, Int)
+screenSize :: RD.MonadWidget t m =>  m (Integer, Integer)
 screenSize = do
   w <- currentWindowUnchecked
   width <- getInnerWidth w
   height <- getInnerHeight w
-  return (width, height)
+  return (fromIntegral width, fromIntegral height)
 
-canvasAttrs :: Int -> Int -> Map.Map T.Text T.Text
+canvasAttrs :: Integer -> Integer -> Map.Map T.Text T.Text
 canvasAttrs width height =
   ("width" =: (T.pack . show $ width)) <>
   ("height" =: (T.pack . show $ height)) <>
