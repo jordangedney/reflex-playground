@@ -53,22 +53,27 @@ import Data.Word (Word8)
 headElement :: RD.MonadWidget t m => m ()
 headElement = mkHeadElement "Random Flood Fill" "css/simple.css"
 
-bodyElement :: RD.MonadWidget t m => IO Word8 -> m ()
+
+-- XXX Prob not even necessary
+alignToPixels x = 2 * ((x `floorDiv` pixelSize) `floorDiv` 2)
+
+bodyElement :: RD.MonadWidget t m => IO Integer -> m ()
 bodyElement randomNum = do
   (width'', height'') <- screenSize
   let (width', height') = (width'' - 20, height'' - 20)
-  let (width, height) = (width' `floorDiv` pixelSize, height' `floorDiv` pixelSize)
+  let (width, height) = (alignToPixels width', alignToPixels height')
 
   evStart <- RD.getPostBuild
+  c <- liftIO $ coordsToVisit width height randomNum
+  let pixelsToDraw = c <$ evStart
 
   evTick <- RD.tickLossy 0.01 =<< liftIO getCurrentTime
   -- evTick <- RD.tickLossy 1 =<< liftIO getCurrentTime
   dyGameTick <- RD.count evTick
-  c <- liftIO $ startingCoords width height randomNum
-  let dyState = RD.traceDyn "" $ (getSize width' height' randomNum c) <$> dyGameTick
+  let dyState = RD.traceDyn "" $ (getState width' width height' height c) <$> dyGameTick
 
   dCx <- createBlankCanvas $
-          ("style" =: "image-rendering: pixelated") <>
+          ("style" =: "image-rendering: pixelated; background-color: white;") <>
           (canvasAttrs width' height')
 
   let renderer = (\state cx _ -> render state cx) <$> dyState
@@ -79,36 +84,30 @@ bodyElement randomNum = do
 type Coords = [((Integer, Integer), Pixel)]
 
 data State = State
-  { width :: Integer
+  { screenWidth :: Integer
+  , width :: Integer
+  , screenHeight :: Integer
   , height :: Integer
-  , randomNum :: IO Word8
   , toDraw :: [((Integer, Integer), Pixel)]
-  }
+  , gameTick :: Integer
+  } deriving (Show, Eq, Ord)
 
-instance Show State where
-  show (State w h _ [((x, y), _)]) = "State: " ++ show w ++ " " ++ show h ++ " " ++ show x ++  " " ++ show y
-
-getSize w h rnd init gameTick =
-  -- XXX Width and height have to be even numbers
-  if gameTick > 0 then State (clamped w) (clamped h) rnd coords else State 2 2 rnd coords
-  where clamped val = if gameTick * 2 < val then gameTick * 2 else val
-        -- coords = [((0, 0), blackPixel)]
-        coords = zip init [blackPixel]
+getState sw w sH h init gameTick = State sw w sH h coords gameTick
+  where coords = zip init $ repeat blackPixel
 
 inBounds :: (Ord b, Ord a, Num b, Num a) => (b, a) -> b -> a -> Bool
 inBounds (x, y) w h = and [x >= 0, x <= w, y >= 0, y <= h]
 
-
 x `floorDiv` y = (\(r, _) -> r) $ x `divMod` y
 
-startingCoords :: Integer -> Integer -> IO Word8 -> IO [(Integer, Integer)]
+startingCoords :: Integer -> Integer -> IO Integer -> IO (Integer, Integer)
 startingCoords maxWidth maxHeight rnd = do
   startingX <- rnd
   startingY <- rnd
-  let x = fromIntegral startingX
-  let y = fromIntegral startingY
+  let x = (startingX `mod` maxWidth)
+  let y = (startingY `mod` maxHeight)
   if inBounds (x + bW, y + bH) (bound maxWidth) (bound maxHeight)
-  then pure [(x + bW, y + bH)]
+  then pure (x + bW, y + bH)
   else startingCoords maxWidth maxHeight rnd
   -- else pure [(0,0)]
   where bound num = num - (num `floorDiv` 4)
@@ -117,26 +116,18 @@ startingCoords maxWidth maxHeight rnd = do
         mW = bound maxWidth
         mH = bound maxHeight
 
-coordsToVisit :: Integer -> Integer -> IO Word8 -> IO [(Integer, Integer)]
+coordsToVisit :: Integer -> Integer -> IO Integer -> IO [(Integer, Integer)]
 coordsToVisit maxWidth maxHeight rnd = do
-  init <- startingCoords maxWidth maxHeight rnd
-  pure init
+  (x, y) <- liftIO $ startingCoords maxWidth maxHeight rnd
+  let rest = [(x + x', y) | x' <- [1..maxWidth]]
+  pure $ [(x, y)] ++ takeWhile (\coord -> inBounds coord maxWidth maxHeight) rest
 
 render :: MonadJSM m => State -> CanvasRenderingContext2D -> m ()
-render st cx = do
-  let (w, h, rnd) = (width st, height st, randomNum st)
-  let [((x, y), pix)] = toDraw st
-  -- growingSquare cx w h
-  -- beamMeUp cx w h
-  one <- liftIO $ rnd
-  two <- liftIO $ rnd
-  three <- liftIO $ rnd
-
-  -- drawPixel cx whitePixel ((w-2)) 0
-  -- drawPixel cx (mkPixel [one, two, three, 0xff]) (w) 0
-  drawPixel cx pix (x * 2 + w) (y * 2 + h)
-  pure ()
-
+render (State sW w sH h [] t) cx = do pure ()
+render state@(State _ w _ h (p:pixels) t) cx = do
+  let ((x, y), pix) = p
+  drawPixel cx pix (x * pixelSize) (y * pixelSize)
+  render state { toDraw = pixels } cx
 
 -- Drawing ---------------------------------------------------------------------
 
@@ -149,21 +140,8 @@ pos x = x * pixelSize
 
 blackPixel :: Pixel
 blackPixel = mkPixel [0x00, 0x00, 0x00,0xff]
-whitePixel = mkPixel [0xff, 0xff, 0xff,0xff]
 
 drawPixel :: MonadJSM m => CanvasRenderingContext2D -> Pixel -> Integer -> Integer ->  m ()
 drawPixel cx pixel xPos yPos = do
   img <- makeImageData pixelSize pixelSize pixel
   C.putImageData cx img (fromIntegral xPos) (fromIntegral yPos)
-
-growingSquare :: MonadJSM m => CanvasRenderingContext2D -> Integer -> Integer ->  m ()
-growingSquare cx w h = do
-  let smallImage = concat $ take (fromIntegral (w * h)) $ repeat blackPixel
-  img <- makeImageData w h smallImage
-  C.putImageData cx img 0 0
-
-beamMeUp :: MonadJSM m => CanvasRenderingContext2D -> Integer -> Integer ->  m ()
-beamMeUp cx w h = do
-  let smallImage = concat $ take (fromIntegral (w * h)) $ repeat blackPixel
-  img <- makeImageData w h smallImage
-  C.putImageData cx img (fromIntegral w) (fromIntegral h)
