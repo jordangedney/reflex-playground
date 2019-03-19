@@ -42,6 +42,9 @@ executable frontend
                      , file-embed
                      , base64-bytestring
                      , random
+                     , warp
+                     , websockets
+                     , wai
 
   hs-source-dirs:      src
   main-is:             Main.hs

@@ -70,7 +70,10 @@ bodyElement randomNum = do
   evTick <- RD.tickLossy 0.01 =<< liftIO getCurrentTime
   -- evTick <- RD.tickLossy 1 =<< liftIO getCurrentTime
   dyGameTick <- RD.count evTick
-  let dyState = RD.traceDyn "" $ (getState width' width height' height c) <$> dyGameTick
+
+  let dyToDraw = (\tick -> ((tick :: Integer), [c !! (fromIntegral tick)])) <$> dyGameTick
+
+  let dyState = RD.traceDyn "" $ (getState width' width height' height) <$> dyToDraw
 
   dCx <- createBlankCanvas $
           ("style" =: "image-rendering: pixelated; background-color: white;") <>
@@ -92,8 +95,8 @@ data State = State
   , gameTick :: Integer
   } deriving (Show, Eq, Ord)
 
-getState sw w sH h init gameTick = State sw w sH h coords gameTick
-  where coords = zip init $ repeat blackPixel
+getState sw w sH h (gameTick, toDraw) = State sw w sH h coords gameTick
+  where coords = zip toDraw $ repeat blackPixel
 
 inBounds :: (Ord b, Ord a, Num b, Num a) => (b, a) -> b -> a -> Bool
 inBounds (x, y) w h = and [x >= 0, x <= w, y >= 0, y <= h]
@@ -119,8 +122,25 @@ startingCoords maxWidth maxHeight rnd = do
 coordsToVisit :: Integer -> Integer -> IO Integer -> IO [(Integer, Integer)]
 coordsToVisit maxWidth maxHeight rnd = do
   (x, y) <- liftIO $ startingCoords maxWidth maxHeight rnd
-  let rest = [(x + x', y) | x' <- [1..maxWidth]]
+  let rest = toVisit (\x -> inBounds x maxWidth maxHeight) [] [(x,y)]
   pure $ [(x, y)] ++ takeWhile (\coord -> inBounds coord maxWidth maxHeight) rest
+
+popRandomNode (x:xs) = (x, xs)
+
+type Coord = (Integer, Integer)
+
+toVisit :: (Coord -> Bool) -> [Coord] -> [Coord] -> [Coord]
+toVisit inbounds visited frontier = toVisit'
+  where (nextNode, frontierWithout) = popRandomNode frontier
+        nextNeighbors = filter (\x -> inbounds x && unseenNode x) $ neighbors nextNode
+        unseenNode node = not (node `elem` visited || node `elem` frontier)
+        newFrontier = frontierWithout ++ nextNeighbors
+        toVisit' = case newFrontier of
+                     [] -> [nextNode]
+                     _ -> nextNode:(toVisit inbounds (nextNode:visited) newFrontier)
+
+neighbors :: (Integer, Integer) -> [(Integer, Integer)]
+neighbors (x, y) = [(x-1, y), (x, y - 1), (x+1, y), (x, y+1)]
 
 render :: MonadJSM m => State -> CanvasRenderingContext2D -> m ()
 render (State sW w sH h [] t) cx = do pure ()
